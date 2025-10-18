@@ -1,0 +1,160 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CUSTOMER
+  ORGANIZER
+}
+
+enum DiscountType {
+  PERCENT
+  AMOUNT
+}
+
+enum TransactionStatus {
+  PENDING
+  PAID
+  CANCELLED
+  REFUNDED
+}
+
+model User {
+  id              String           @id @default(uuid())
+  username        String
+  email           String           @unique
+  password        String
+  role            UserRole         @default(CUSTOMER)
+  referralCode    String           @unique
+  referredById    String?
+  referredBy      User?            @relation("UserReferrer", fields: [referredById], references: [id])
+  referrals       User[]           @relation("UserReferrer")
+  createdAt       DateTime         @default(now())
+  events          Event[]          @relation("UserEvents")
+  points          Point[]          @relation("UserPoints")
+  reviews         EventReview[]    @relation("UserReviews")
+  discountCoupons DiscountCoupon[] @relation("UserCoupons")
+  transactions    Transaction[]    @relation("UserTransactions")
+  referralsMade   Referral[]       @relation("ReferralReferrer")
+  referralsGiven  Referral[]       @relation("ReferralUser")
+}
+
+model Event {
+  id               String            @id @default(uuid())
+  organizerId      String
+  title            String
+  description      String            @db.LongText
+  category         String
+  location         String
+  image            String?
+  date             DateTime
+  startTime        DateTime
+  endTime          DateTime
+  isPaid           Boolean
+  basePrice        Int
+  availableSeats   Int
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  organizer        User              @relation("UserEvents", fields: [organizerId], references: [id])
+  reviews          EventReview[]     @relation("EventReviews")
+  eventTicketTypes EventTicketType[] @relation("EventTicketTypes")
+  eventPromotions  EventPromotion[]  @relation("EventPromotions")
+  discountCoupons  DiscountCoupon[]  @relation("EventCoupons")
+  transactions     Transaction[]     @relation("EventTransactions")
+}
+
+model EventTicketType {
+  id           String        @id @default(uuid())
+  eventId      String
+  name         String
+  price        Int
+  quota        Int
+  event        Event         @relation("EventTicketTypes", fields: [eventId], references: [id])
+  transactions Transaction[] @relation("TicketTypeTransactions")
+}
+
+model EventReview {
+  id        String   @id @default(uuid())
+  userId    String
+  eventId   String
+  comment   String
+  rating    Int
+  createdAt DateTime @default(now())
+  event     Event    @relation("EventReviews", fields: [eventId], references: [id])
+  user      User     @relation("UserReviews", fields: [userId], references: [id])
+}
+
+model EventPromotion {
+  id            String       @id @default(uuid())
+  eventId       String
+  code          String       @unique
+  discountType  DiscountType
+  discountValue Int
+  validFrom     DateTime
+  validUntil    DateTime
+  maxUsage      Int
+  usedCount     Int          @default(0)
+  event         Event        @relation("EventPromotions", fields: [eventId], references: [id])
+}
+
+model Referral {
+  id             String @id @default(uuid())
+  userId         String
+  referredUserId String
+  user           User   @relation("ReferralReferrer", fields: [userId], references: [id])
+  referredUser   User   @relation("ReferralUser", fields: [referredUserId], references: [id])
+}
+
+model Point {
+  id           String       @id @default(uuid())
+  userId       String
+  amount       Int
+  expiresAt    DateTime
+  createdAt    DateTime     @default(now())
+  redeemedInId String?
+  user         User         @relation("UserPoints", fields: [userId], references: [id])
+  redeemedIn   Transaction? @relation("PointRedeemed", fields: [redeemedInId], references: [id])
+}
+
+model DiscountCoupon {
+  id        String       @id @default(uuid())
+  code      String       @unique
+  userId    String
+  eventId   String
+  amount    Int
+  expiresAt DateTime
+  usedInId  String?      @unique
+  usedIn    Transaction? @relation("CouponUsed", fields: [usedInId], references: [id])
+  user      User         @relation("UserCoupons", fields: [userId], references: [id])
+  event     Event        @relation("EventCoupons", fields: [eventId], references: [id])
+}
+
+model Transaction {
+  id           String            @id @default(uuid())
+  userId       String
+  eventId      String
+  ticketTypeId String
+  qty          Int
+  totalPrice   Int
+  usedPoint    Int               @default(0)
+  usedCoupon   DiscountCoupon?   @relation("CouponUsed") // <-- hanya nama relasi
+  status       TransactionStatus
+  createdAt    DateTime          @default(now())
+
+  user           User            @relation("UserTransactions", fields: [userId], references: [id])
+  event          Event           @relation("EventTransactions", fields: [eventId], references: [id])
+  ticketType     EventTicketType @relation("TicketTypeTransactions", fields: [ticketTypeId], references: [id])
+  pointsRedeemed Point[]         @relation("PointRedeemed")
+}
